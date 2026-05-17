@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -9,7 +10,6 @@ if TYPE_CHECKING:
     from workflow.runner import Ports
 
 StepKind = Literal["command", "deterministic", "gate", "llm", "notify"]
-StepHandler = Callable[["Context", "Ports"], "StepResult | None"]
 
 
 @dataclass(frozen=True)
@@ -35,15 +35,6 @@ class Context:
         return self.workdir / path
 
 
-@dataclass(frozen=True)
-class Step:
-    id: str
-    handler: StepHandler
-    name: str | None = None
-    kind: StepKind = "deterministic"
-    depends_on: tuple[str, ...] = ()
-
-
 @dataclass
 class StepResult:
     ok: bool = True
@@ -53,6 +44,18 @@ class StepResult:
     @classmethod
     def fail(cls, status: str, output: Any = None) -> "StepResult":
         return cls(ok=False, status=status, output=output)
+
+
+@dataclass(frozen=True)
+class Step(ABC):
+    id: str
+    name: str | None = None
+    kind: StepKind = "deterministic"
+    depends_on: tuple[str, ...] = ()
+
+    @abstractmethod
+    def run(self, ctx: Context, ports: "Ports") -> StepResult | None:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)

@@ -6,12 +6,12 @@ The core is intentionally small and ports-and-adapters shaped:
 
 - `workflow.domain`: workflow, step, context, and command data structures.
 - `workflow.runner`: dependency ordering, shared context, reports, and ports.
-- `workflow.ports`: command, metrics, notification, and clock protocols.
-- `workflow.adapters`: subprocess, JSON metrics, stdout/null notification, and clock adapters.
+- `workflow.ports`: separate command, metrics, notification, and clock protocols.
+- `workflow.adapters`: subprocess, JSON metrics, Telegram/stdout/null notification, and clock adapters.
 
-Workflow definitions are Python code. A repository can import this library,
-register project-specific steps, and share state through `Context` without
-encoding pipeline behavior in TOML strings.
+Workflow definitions are Python code. A repository can implement project-specific
+`Step` classes, register them in a `Workflow`, and share state through `Context`
+without encoding pipeline behavior in TOML strings.
 
 ## Setup
 

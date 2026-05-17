@@ -9,7 +9,10 @@ from workflow.adapters.command import SubprocessCommandRunner
 from workflow.adapters.metrics import NullMetricsSink
 from workflow.adapters.notify import NullNotifier
 from workflow.domain import Context, StepResult, Workflow
-from workflow.ports import Clock, CommandRunner, MetricsSink, Notifier
+from workflow.ports.clock import Clock
+from workflow.ports.command import CommandRunner
+from workflow.ports.metrics import MetricsSink
+from workflow.ports.notify import Notifier
 
 
 @dataclass
@@ -57,7 +60,7 @@ class Runner:
                     )
 
             before = self._ports.clock.monotonic()
-            raw_result = step.handler(ctx, self._ports)
+            raw_result = step.run(ctx, self._ports)
             result = raw_result or StepResult()
             duration_ms = int((self._ports.clock.monotonic() - before) * 1000)
             ctx.step_outputs[step.id] = result.output

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from workflow.domain import CommandSpec
-from workflow.ports import CommandResult
+from workflow.ports.command import CommandResult
 
 
 class SubprocessCommandRunner:

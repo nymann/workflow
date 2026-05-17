@@ -6,7 +6,7 @@ import pytest
 
 from workflow import StepResult, Workflow, python_step
 from workflow.domain import CommandSpec, Context
-from workflow.ports import CommandResult
+from workflow.ports.command import CommandResult
 from workflow.runner import Ports, Runner
 from workflow.steps import command_step
 
