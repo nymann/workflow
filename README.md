@@ -6,12 +6,17 @@ The core is intentionally small and ports-and-adapters shaped:
 
 - `workflow.domain`: workflow, step, context, and command data structures.
 - `workflow.runner`: dependency ordering, shared context, reports, and ports.
-- `workflow.ports`: separate command, metrics, notification, and clock protocols.
-- `workflow.adapters`: subprocess, JSON metrics, Telegram/stdout/null notification, and clock adapters.
+- `workflow.ports.inbound`: inbound protocols such as `Clock`.
+- `workflow.ports.out`: outbound protocols for commands, metrics, and notifications.
+- `workflow.adapters.inbound`: inbound concrete adapters such as `system_clock.py`.
+- `workflow.adapters.out`: outbound concrete adapters grouped by port, for example
+  `notification/telegram_notifier.py` and `metrics/open_telemetry_metrics_recorder.py`.
 
-Workflow definitions are Python code. A repository can implement project-specific
-`Step` classes, register them in a `Workflow`, and share state through `Context`
-without encoding pipeline behavior in TOML strings.
+Workflow definitions are Python code. A repository can implement
+project-specific `Step[T]` classes, declare their output type, register them in
+a `Workflow`, and consume prior outputs through `Context.output(step_id, T)`.
+Steps can also declare conditions, which gives workflows explicit branch points
+without burying routing inside a shell script.
 
 ## Setup
 
