@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import subprocess
 import os
+import subprocess
 from pathlib import Path
 
 from workflow.domain import CommandSpec
-from workflow.ports.command import CommandResult
+from workflow.ports.out.command import CommandResult
 
 
 class SubprocessCommandRunner:

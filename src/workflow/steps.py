@@ -8,7 +8,7 @@ from workflow.runner import Ports
 
 
 @dataclass(frozen=True)
-class CommandStep(Step):
+class CommandStep(Step[dict[str, str | int]]):
     command: CommandSpec = CommandSpec(())
 
     def run(self, ctx: Context, ports: Ports) -> StepResult:
@@ -29,7 +29,7 @@ class CommandStep(Step):
 
 
 @dataclass(frozen=True)
-class FunctionStep(Step):
+class FunctionStep(Step[object]):
     handler: Callable[[Context, Ports], StepResult | None] = lambda ctx, ports: None
 
     def run(self, ctx: Context, ports: Ports) -> StepResult | None:

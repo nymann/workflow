@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from workflow import StepResult, Workflow, python_step
+from workflow import FunctionStep, StepResult, Workflow, python_step
 from workflow.domain import CommandSpec, Context
-from workflow.ports.command import CommandResult
+from workflow.ports.out.command import CommandResult
 from workflow.runner import Ports, Runner
 from workflow.steps import command_step
 
@@ -36,10 +36,19 @@ class FakeCommands:
 
 class FakeMetrics:
     def __init__(self) -> None:
-        self.reports: list[object] = []
+        self.events: list[tuple[str, object]] = []
 
-    def write(self, report: object) -> None:
-        self.reports.append(report)
+    def workflow_started(self, workflow: str, started_unix: float) -> None:
+        self.events.append(("workflow-started", (workflow, started_unix)))
+
+    def step_started(self, workflow: str, step_id: str) -> None:
+        self.events.append(("step-started", (workflow, step_id)))
+
+    def step_finished(self, workflow: str, step_report: object) -> None:
+        self.events.append(("step-finished", (workflow, step_report)))
+
+    def workflow_finished(self, report: object) -> None:
+        self.events.append(("workflow-finished", report))
 
 
 def test_runner_shares_context_between_steps(tmp_path: Path) -> None:
@@ -68,7 +77,14 @@ def test_runner_shares_context_between_steps(tmp_path: Path) -> None:
     assert report.ok
     assert [step.id for step in report.steps] == ["produce", "consume"]
     assert report.steps[1].status == "42"
-    assert len(metrics.reports) == 1
+    assert [event[0] for event in metrics.events] == [
+        "workflow-started",
+        "step-started",
+        "step-finished",
+        "step-started",
+        "step-finished",
+        "workflow-finished",
+    ]
 
 
 def test_runner_stops_on_failure(tmp_path: Path) -> None:
@@ -109,6 +125,67 @@ def test_command_step_uses_command_port(tmp_path: Path) -> None:
     assert report.ok
     assert report.steps[0].status == "done"
     assert commands.seen[0].argv == ("echo", "done")
+
+
+def test_runner_supports_typed_outputs_and_conditions(tmp_path: Path) -> None:
+    def produce(ctx: Context, ports: Ports) -> StepResult[int]:
+        _ = ctx, ports
+        return StepResult(output=7)
+
+    def selected(ctx: Context, ports: Ports) -> StepResult[str]:
+        _ = ports
+        value = ctx.output("produce", int)
+        return StepResult(status=f"selected {value}", output="selected")
+
+    def skipped(ctx: Context, ports: Ports) -> StepResult[str]:
+        _ = ctx, ports
+        raise AssertionError("condition should skip this step")
+
+    workflow = Workflow(
+        name="conditional",
+        steps=(
+            FunctionStep(
+                id="produce",
+                output_type=int,
+                handler=produce,
+            ),
+            FunctionStep(
+                id="selected",
+                depends_on=("produce",),
+                output_type=str,
+                condition=lambda ctx: ctx.output("produce", int) == 7,
+                handler=selected,
+            ),
+            FunctionStep(
+                id="skipped",
+                depends_on=("produce",),
+                condition=lambda ctx: ctx.output("produce", int) != 7,
+                handler=skipped,
+            ),
+        ),
+    )
+
+    report = Runner(Ports(clock=FakeClock())).run(workflow, workdir=tmp_path)
+
+    assert report.ok
+    assert report.steps[1].status == "selected 7"
+    assert report.steps[2].skipped
+
+
+def test_runner_rejects_wrong_output_type(tmp_path: Path) -> None:
+    workflow = Workflow(
+        name="bad-output",
+        steps=(
+            FunctionStep(
+                id="produce",
+                output_type=int,
+                handler=lambda ctx, ports: StepResult(output="wrong"),
+            ),
+        ),
+    )
+
+    with pytest.raises(TypeError, match="expected int"):
+        Runner(Ports(clock=FakeClock())).run(workflow, workdir=tmp_path)
 
 
 def test_validation_rejects_unknown_dependency() -> None:

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
 
 if TYPE_CHECKING:
     from workflow.runner import Ports
 
 StepKind = Literal["command", "deterministic", "gate", "llm", "notify"]
+OutputT = TypeVar("OutputT")
+Condition = Callable[["Context"], bool]
 
 
 @dataclass(frozen=True)
@@ -34,27 +36,43 @@ class Context:
             return path
         return self.workdir / path
 
+    def output(self, step_id: str, output_type: type[OutputT]) -> OutputT:
+        if step_id not in self.step_outputs:
+            raise KeyError(f"step {step_id!r} has no output")
+        value = self.step_outputs[step_id]
+        if not isinstance(value, output_type):
+            raise TypeError(
+                f"step {step_id!r} output is {type(value).__name__}, "
+                f"expected {output_type.__name__}"
+            )
+        return cast(OutputT, value)
+
 
 @dataclass
-class StepResult:
+class StepResult(Generic[OutputT]):
     ok: bool = True
     status: str = "ok"
-    output: Any = None
+    output: OutputT | None = None
 
     @classmethod
-    def fail(cls, status: str, output: Any = None) -> "StepResult":
+    def fail(cls, status: str, output: Any = None) -> "StepResult[Any]":
         return cls(ok=False, status=status, output=output)
 
 
 @dataclass(frozen=True)
-class Step(ABC):
+class Step(ABC, Generic[OutputT]):
     id: str
     name: str | None = None
     kind: StepKind = "deterministic"
     depends_on: tuple[str, ...] = ()
+    output_type: type[OutputT] | None = None
+    condition: Condition | None = None
+
+    def should_run(self, ctx: Context) -> bool:
+        return self.condition(ctx) if self.condition else True
 
     @abstractmethod
-    def run(self, ctx: Context, ports: "Ports") -> StepResult | None:
+    def run(self, ctx: Context, ports: "Ports") -> StepResult[OutputT] | None:
         raise NotImplementedError
 
 

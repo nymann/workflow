@@ -4,21 +4,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from workflow.adapters.clock import SystemClock
-from workflow.adapters.command import SubprocessCommandRunner
-from workflow.adapters.metrics import NullMetricsSink
-from workflow.adapters.notify import NullNotifier
+from workflow.adapters.inbound.clock.system_clock import SystemClock
+from workflow.adapters.out.command.subprocess_command_runner import SubprocessCommandRunner
+from workflow.adapters.out.metrics.null_metrics_recorder import NullMetricsRecorder
+from workflow.adapters.out.notification.null_notifier import NullNotifier
 from workflow.domain import Context, StepResult, Workflow
-from workflow.ports.clock import Clock
-from workflow.ports.command import CommandRunner
-from workflow.ports.metrics import MetricsSink
-from workflow.ports.notify import Notifier
+from workflow.ports.inbound.clock import Clock
+from workflow.ports.out.command import CommandRunner
+from workflow.ports.out.metrics import MetricsRecorder
+from workflow.ports.out.notification import Notifier
 
 
 @dataclass
 class Ports:
     commands: CommandRunner = field(default_factory=SubprocessCommandRunner)
-    metrics: MetricsSink = field(default_factory=NullMetricsSink)
+    metrics: MetricsRecorder = field(default_factory=NullMetricsRecorder)
     notifier: Notifier = field(default_factory=NullNotifier)
     clock: Clock = field(default_factory=SystemClock)
 
@@ -31,6 +31,7 @@ class StepReport:
     ok: bool
     status: str
     duration_ms: int
+    skipped: bool = False
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class Runner:
         completed: dict[str, bool] = {}
         reports: list[StepReport] = []
         started = self._ports.clock.now_unix()
+        self._ports.metrics.workflow_started(workflow.name, started)
 
         for step in workflow.steps:
             for dep in step.depends_on:
@@ -59,29 +61,51 @@ class Runner:
                         f"step {step.id!r} dependency {dep!r} did not complete"
                     )
 
+            if not step.should_run(ctx):
+                completed[step.id] = True
+                report = StepReport(
+                    id=step.id,
+                    name=step.name or step.id,
+                    kind=step.kind,
+                    ok=True,
+                    status="skipped",
+                    duration_ms=0,
+                    skipped=True,
+                )
+                reports.append(report)
+                self._ports.metrics.step_finished(workflow.name, report)
+                continue
+
+            self._ports.metrics.step_started(workflow.name, step.id)
             before = self._ports.clock.monotonic()
             raw_result = step.run(ctx, self._ports)
             result = raw_result or StepResult()
             duration_ms = int((self._ports.clock.monotonic() - before) * 1000)
+            if result.ok and step.output_type and result.output is not None:
+                if not isinstance(result.output, step.output_type):
+                    raise TypeError(
+                        f"step {step.id!r} returned {type(result.output).__name__}, "
+                        f"expected {step.output_type.__name__}"
+                    )
             ctx.step_outputs[step.id] = result.output
             completed[step.id] = result.ok
-            reports.append(
-                StepReport(
-                    id=step.id,
-                    name=step.name or step.id,
-                    kind=step.kind,
-                    ok=result.ok,
-                    status=result.status,
-                    duration_ms=duration_ms,
-                )
+            step_report = StepReport(
+                id=step.id,
+                name=step.name or step.id,
+                kind=step.kind,
+                ok=result.ok,
+                status=result.status,
+                duration_ms=duration_ms,
             )
+            reports.append(step_report)
+            self._ports.metrics.step_finished(workflow.name, step_report)
             if not result.ok:
                 report = self._report(workflow.name, False, started, reports)
-                self._ports.metrics.write(report)
+                self._ports.metrics.workflow_finished(report)
                 return report
 
         report = self._report(workflow.name, True, started, reports)
-        self._ports.metrics.write(report)
+        self._ports.metrics.workflow_finished(report)
         return report
 
     @staticmethod
@@ -109,6 +133,7 @@ def report_to_dict(report: RunReport) -> dict[str, Any]:
                 "ok": step.ok,
                 "status": step.status,
                 "duration_ms": step.duration_ms,
+                "skipped": step.skipped,
             }
             for step in report.steps
         ],

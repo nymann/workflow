@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class MetricsRecorder(Protocol):
+    def workflow_started(self, workflow: str, started_unix: float) -> None: ...
+
+    def step_started(self, workflow: str, step_id: str) -> None: ...
+
+    def step_finished(self, workflow: str, step_report: object) -> None: ...
+
+    def workflow_finished(self, report: object) -> None: ...

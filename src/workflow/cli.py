@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from workflow.adapters.metrics import JsonMetricsSink
+from workflow.adapters.out.metrics.json_metrics_recorder import JsonMetricsRecorder
 from workflow.loader import load_workflow
 from workflow.runner import Ports, Runner, report_to_dict
 
@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
         workdir = Path(args.workdir).resolve()
         sys.path.insert(0, str(workdir))
         workflow = load_workflow(args.target)
-        metrics = JsonMetricsSink(Path(args.metrics)) if args.metrics else None
+        metrics = JsonMetricsRecorder(Path(args.metrics)) if args.metrics else None
         ports = Ports(metrics=metrics) if metrics else Ports()
         report = Runner(ports).run(workflow, workdir=workdir)
         if args.json:
