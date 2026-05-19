@@ -6,6 +6,7 @@ import pytest
 
 from workflow import FunctionStep, StepResult, Workflow, python_step
 from workflow.domain import CommandSpec, Context
+from workflow.ports.out.agent import AgentHandoff, AgentHandoffResult
 from workflow.ports.out.command import CommandResult
 from workflow.runner import Ports, Runner
 from workflow.steps import command_step
@@ -49,6 +50,15 @@ class FakeMetrics:
 
     def workflow_finished(self, report: object) -> None:
         self.events.append(("workflow-finished", report))
+
+
+class FakeAgentHandoff:
+    def __init__(self) -> None:
+        self.requests: list[tuple[AgentHandoff, Path]] = []
+
+    def request(self, handoff: AgentHandoff, *, workdir: Path) -> AgentHandoffResult:
+        self.requests.append((handoff, workdir))
+        return AgentHandoffResult(accepted=True, status="accepted")
 
 
 def test_runner_shares_context_between_steps(tmp_path: Path) -> None:
@@ -125,6 +135,36 @@ def test_command_step_uses_command_port(tmp_path: Path) -> None:
     assert report.ok
     assert report.steps[0].status == "done"
     assert commands.seen[0].argv == ("echo", "done")
+
+
+def test_steps_can_request_agent_handoffs_through_port(tmp_path: Path) -> None:
+    agent_handoff = FakeAgentHandoff()
+
+    def request_agent(ctx: Context, ports: Ports) -> StepResult:
+        result = ports.agent_handoff.request(
+            AgentHandoff(
+                workflow="demo",
+                step_id="request-agent",
+                prompt="please inspect",
+            ),
+            workdir=ctx.workdir,
+        )
+        return StepResult(status=result.status, output=result.accepted)
+
+    workflow = Workflow(
+        name="agent",
+        steps=(python_step("request-agent", request_agent),),
+    )
+
+    report = Runner(Ports(agent_handoff=agent_handoff, clock=FakeClock())).run(
+        workflow,
+        workdir=tmp_path,
+    )
+
+    assert report.ok
+    assert report.steps[0].status == "accepted"
+    assert agent_handoff.requests[0][0].prompt == "please inspect"
+    assert agent_handoff.requests[0][1] == tmp_path
 
 
 def test_runner_supports_typed_outputs_and_conditions(tmp_path: Path) -> None:

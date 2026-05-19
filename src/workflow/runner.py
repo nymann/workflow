@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from workflow.adapters.inbound.clock.system_clock import SystemClock
+from workflow.adapters.out.agent.null_agent_handoff import NullAgentHandoffPort
 from workflow.adapters.out.command.subprocess_command_runner import SubprocessCommandRunner
 from workflow.adapters.out.metrics.null_metrics_recorder import NullMetricsRecorder
 from workflow.adapters.out.notification.null_notifier import NullNotifier
 from workflow.domain import Context, StepResult, Workflow
 from workflow.ports.inbound.clock import Clock
+from workflow.ports.out.agent import AgentHandoffPort
 from workflow.ports.out.command import CommandRunner
 from workflow.ports.out.metrics import MetricsRecorder
 from workflow.ports.out.notification import Notifier
@@ -17,6 +19,7 @@ from workflow.ports.out.notification import Notifier
 
 @dataclass
 class Ports:
+    agent_handoff: AgentHandoffPort = field(default_factory=NullAgentHandoffPort)
     commands: CommandRunner = field(default_factory=SubprocessCommandRunner)
     metrics: MetricsRecorder = field(default_factory=NullMetricsRecorder)
     notifier: Notifier = field(default_factory=NullNotifier)
