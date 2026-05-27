@@ -13,6 +13,8 @@ class MetricEvent:
         "workflow-started",
         "step-started",
         "step-finished",
+        "phase-started",
+        "phase-finished",
         "workflow-finished",
         "gauge",
         "counter",
@@ -46,6 +48,37 @@ class JsonMetricsRecorder:
     def step_finished(self, workflow: str, step_report: object) -> None:
         self._append(
             MetricEvent(kind="step-finished", workflow=workflow, payload=step_report)
+        )
+
+    def phase_started(self, workflow: str, step_id: str, phase_id: str) -> None:
+        self._append(
+            MetricEvent(
+                kind="phase-started",
+                workflow=workflow,
+                payload={"step_id": step_id, "phase_id": phase_id},
+            )
+        )
+
+    def phase_finished(
+        self,
+        workflow: str,
+        step_id: str,
+        phase_id: str,
+        *,
+        duration_ms: int,
+        ok: bool = True,
+    ) -> None:
+        self._append(
+            MetricEvent(
+                kind="phase-finished",
+                workflow=workflow,
+                payload={
+                    "step_id": step_id,
+                    "phase_id": phase_id,
+                    "duration_ms": duration_ms,
+                    "ok": ok,
+                },
+            )
         )
 
     def workflow_finished(self, report: object) -> None:

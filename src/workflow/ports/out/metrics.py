@@ -11,6 +11,18 @@ class MetricsRecorder(Protocol):
 
     def step_finished(self, workflow: str, step_report: object) -> None: ...
 
+    def phase_started(self, workflow: str, step_id: str, phase_id: str) -> None: ...
+
+    def phase_finished(
+        self,
+        workflow: str,
+        step_id: str,
+        phase_id: str,
+        *,
+        duration_ms: int,
+        ok: bool = True,
+    ) -> None: ...
+
     def workflow_finished(self, report: object) -> None: ...
 
     def gauge(

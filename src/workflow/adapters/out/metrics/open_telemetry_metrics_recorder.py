@@ -15,6 +15,11 @@ class OpenTelemetryMetricsRecorder:
             unit="ms",
             description="Workflow step duration",
         )
+        self._phase_duration = self._meter.create_histogram(
+            "workflow.phase.duration_ms",
+            unit="ms",
+            description="Workflow phase duration",
+        )
 
     def workflow_started(self, workflow: str, started_unix: float) -> None:
         _ = workflow, started_unix
@@ -31,6 +36,28 @@ class OpenTelemetryMetricsRecorder:
                 "kind": getattr(step_report, "kind", ""),
                 "ok": str(getattr(step_report, "ok", False)).lower(),
                 "skipped": str(getattr(step_report, "skipped", False)).lower(),
+            },
+        )
+
+    def phase_started(self, workflow: str, step_id: str, phase_id: str) -> None:
+        _ = workflow, step_id, phase_id
+
+    def phase_finished(
+        self,
+        workflow: str,
+        step_id: str,
+        phase_id: str,
+        *,
+        duration_ms: int,
+        ok: bool = True,
+    ) -> None:
+        self._phase_duration.record(
+            duration_ms,
+            {
+                "workflow": workflow,
+                "step_id": step_id,
+                "phase_id": phase_id,
+                "ok": str(ok).lower(),
             },
         )
 

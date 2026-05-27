@@ -13,6 +13,20 @@ class NullMetricsRecorder:
     def step_finished(self, workflow: str, step_report: object) -> None:
         _ = workflow, step_report
 
+    def phase_started(self, workflow: str, step_id: str, phase_id: str) -> None:
+        _ = workflow, step_id, phase_id
+
+    def phase_finished(
+        self,
+        workflow: str,
+        step_id: str,
+        phase_id: str,
+        *,
+        duration_ms: int,
+        ok: bool = True,
+    ) -> None:
+        _ = workflow, step_id, phase_id, duration_ms, ok
+
     def workflow_finished(self, report: object) -> None:
         _ = report
 

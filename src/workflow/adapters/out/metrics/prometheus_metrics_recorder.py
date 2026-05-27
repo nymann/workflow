@@ -85,6 +85,49 @@ class PrometheusMetricsRecorder:
 
         self._update_state(update)
 
+    def phase_started(self, workflow: str, step_id: str, phase_id: str) -> None:
+        def update(state: dict[str, Any]) -> None:
+            item = _phase_state(state, workflow, step_id, phase_id)
+            item["active"] = 1
+            item["last_started_unix"] = time()
+
+        self._update_state(update)
+
+    def phase_finished(
+        self,
+        workflow: str,
+        step_id: str,
+        phase_id: str,
+        *,
+        duration_ms: int,
+        ok: bool = True,
+    ) -> None:
+        duration_seconds = duration_ms / 1000
+
+        def update(state: dict[str, Any]) -> None:
+            item = _phase_state(state, workflow, step_id, phase_id)
+            item["active"] = 0
+            item["ok"] = ok
+            item["runs_total"] = _int(item.get("runs_total")) + 1
+            runs_by_ok = item.setdefault("runs_by_ok", {})
+            ok_key = str(ok).lower()
+            runs_by_ok[ok_key] = _int(runs_by_ok.get(ok_key)) + 1
+            item["last_duration_seconds"] = duration_seconds
+            item["duration_seconds_sum"] = (
+                float(item.get("duration_seconds_sum", 0.0)) + duration_seconds
+            )
+            item["duration_seconds_count"] = (
+                _int(item.get("duration_seconds_count")) + 1
+            )
+            buckets = item.setdefault("duration_seconds_buckets", {})
+            for bucket in DEFAULT_BUCKETS:
+                if duration_seconds <= bucket:
+                    key = _bucket_key(bucket)
+                    buckets[key] = _int(buckets.get(key)) + 1
+            buckets["+Inf"] = _int(buckets.get("+Inf")) + 1
+
+        self._update_state(update)
+
     def workflow_finished(self, report: object) -> None:
         run = _to_mapping(report)
         workflow = str(run.get("workflow", ""))
@@ -349,6 +392,98 @@ def render_prometheus(state: dict[str, Any]) -> str:
                 _int(item.get("duration_seconds_count")),
             )
         )
+    phases = state.get("phases", {})
+    lines.extend(
+        [
+            "# HELP workflow_phase_runs_total Workflow phase runs by result.",
+            "# TYPE workflow_phase_runs_total counter",
+        ]
+    )
+    for key, item in sorted(phases.items()):
+        workflow, step_id, phase_id = key.split("\0", 2)
+        runs_by_ok = item.get("runs_by_ok", {})
+        if not runs_by_ok:
+            runs_by_ok = {str(bool(item.get("ok"))).lower(): item.get("runs_total", 0)}
+        for ok, total in sorted(runs_by_ok.items()):
+            labels = {
+                "workflow": workflow,
+                "step_id": step_id,
+                "phase_id": phase_id,
+                "ok": str(ok),
+            }
+            lines.append(_sample("workflow_phase_runs_total", labels, _int(total)))
+    lines.extend(
+        [
+            "# HELP workflow_phase_active Active workflow phases.",
+            "# TYPE workflow_phase_active gauge",
+        ]
+    )
+    for key, item in sorted(phases.items()):
+        workflow, step_id, phase_id = key.split("\0", 2)
+        labels = {
+            "workflow": workflow,
+            "step_id": step_id,
+            "phase_id": phase_id,
+        }
+        lines.append(_sample("workflow_phase_active", labels, _int(item.get("active"))))
+        lines.append(
+            _sample(
+                "workflow_phase_active_duration_seconds",
+                labels,
+                _active_duration_seconds(item),
+            )
+        )
+        lines.append(
+            _sample(
+                "workflow_phase_last_duration_seconds",
+                labels,
+                float(item.get("last_duration_seconds", 0.0)),
+            )
+        )
+    lines.extend(
+        [
+            "# HELP workflow_phase_duration_seconds Workflow phase duration histogram.",
+            "# TYPE workflow_phase_duration_seconds histogram",
+        ]
+    )
+    for key, item in sorted(phases.items()):
+        workflow, step_id, phase_id = key.split("\0", 2)
+        labels = {
+            "workflow": workflow,
+            "step_id": step_id,
+            "phase_id": phase_id,
+        }
+        buckets = item.get("duration_seconds_buckets", {})
+        for bucket in DEFAULT_BUCKETS:
+            key_name = _bucket_key(bucket)
+            lines.append(
+                _sample(
+                    "workflow_phase_duration_seconds_bucket",
+                    {**labels, "le": key_name},
+                    _int(buckets.get(key_name)),
+                )
+            )
+        lines.append(
+            _sample(
+                "workflow_phase_duration_seconds_bucket",
+                {**labels, "le": "+Inf"},
+                _int(buckets.get("+Inf")),
+            )
+        )
+        lines.append(
+            _sample(
+                "workflow_phase_duration_seconds_sum",
+                labels,
+                float(item.get("duration_seconds_sum", 0.0)),
+            )
+        )
+        lines.append(
+            _sample(
+                "workflow_phase_duration_seconds_count",
+                labels,
+                _int(item.get("duration_seconds_count")),
+            )
+        )
     custom = state.get("custom", {})
     gauges = custom.get("gauges", {})
     if gauges:
@@ -389,6 +524,14 @@ def _workflow_state(state: dict[str, Any], workflow: str) -> dict[str, Any]:
 
 def _step_state(state: dict[str, Any], workflow: str, step_id: str) -> dict[str, Any]:
     return state.setdefault("steps", {}).setdefault(f"{workflow}\0{step_id}", {})
+
+
+def _phase_state(
+    state: dict[str, Any], workflow: str, step_id: str, phase_id: str
+) -> dict[str, Any]:
+    return state.setdefault("phases", {}).setdefault(
+        f"{workflow}\0{step_id}\0{phase_id}", {}
+    )
 
 
 def _custom_metric_state(

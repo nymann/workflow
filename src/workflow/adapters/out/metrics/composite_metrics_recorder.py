@@ -20,6 +20,28 @@ class CompositeMetricsRecorder:
         for recorder in self._recorders:
             recorder.step_finished(workflow, step_report)
 
+    def phase_started(self, workflow: str, step_id: str, phase_id: str) -> None:
+        for recorder in self._recorders:
+            recorder.phase_started(workflow, step_id, phase_id)
+
+    def phase_finished(
+        self,
+        workflow: str,
+        step_id: str,
+        phase_id: str,
+        *,
+        duration_ms: int,
+        ok: bool = True,
+    ) -> None:
+        for recorder in self._recorders:
+            recorder.phase_finished(
+                workflow,
+                step_id,
+                phase_id,
+                duration_ms=duration_ms,
+                ok=ok,
+            )
+
     def workflow_finished(self, report: object) -> None:
         for recorder in self._recorders:
             recorder.workflow_finished(report)

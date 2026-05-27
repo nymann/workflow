@@ -115,3 +115,31 @@ def test_prometheus_recorder_renders_active_step_duration(tmp_path: Path) -> Non
         'workflow_step_active_duration_seconds{workflow="demo",step_id="slow",'
         'kind=""}'
     ) in text
+
+
+def test_prometheus_recorder_renders_phase_duration_metrics(tmp_path: Path) -> None:
+    state = tmp_path / "prometheus-state.json"
+    recorder = PrometheusMetricsRecorder(state_path=state)
+
+    recorder.phase_started("demo", "loop", "agent")
+    recorder.phase_finished(
+        "demo",
+        "loop",
+        "agent",
+        duration_ms=2500,
+    )
+
+    text = render_prometheus(__import__("json").loads(state.read_text()))
+
+    assert (
+        'workflow_phase_runs_total{workflow="demo",step_id="loop",'
+        'phase_id="agent",ok="true"} 1'
+    ) in text
+    assert (
+        'workflow_phase_last_duration_seconds{workflow="demo",step_id="loop",'
+        'phase_id="agent"} 2.5'
+    ) in text
+    assert (
+        'workflow_phase_duration_seconds_bucket{workflow="demo",step_id="loop",'
+        'phase_id="agent",le="2.5"} 1'
+    ) in text
