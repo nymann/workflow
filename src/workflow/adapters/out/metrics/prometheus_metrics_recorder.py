@@ -295,6 +295,13 @@ def render_prometheus(state: dict[str, Any]) -> str:
         lines.append(_sample("workflow_step_active", labels, _int(item.get("active"))))
         lines.append(
             _sample(
+                "workflow_step_active_duration_seconds",
+                labels,
+                _active_duration_seconds(item),
+            )
+        )
+        lines.append(
+            _sample(
                 "workflow_step_last_duration_seconds",
                 labels,
                 float(item.get("last_duration_seconds", 0.0)),
@@ -451,6 +458,15 @@ def _int(value: Any) -> int:
 
 def _number(value: Any) -> int | float:
     return value if isinstance(value, int | float) else 0
+
+
+def _active_duration_seconds(item: dict[str, Any]) -> float:
+    if _int(item.get("active")) != 1:
+        return 0.0
+    started = item.get("last_started_unix")
+    if not isinstance(started, int | float):
+        return 0.0
+    return max(0.0, time() - started)
 
 
 def _metric_name(value: str) -> str:

@@ -100,3 +100,18 @@ def test_prometheus_recorder_renders_custom_metrics(tmp_path: Path) -> None:
     assert (
         'attempts_total{result="kept",target_class="com.acme.LegacyThing"} 2.0'
     ) in text
+
+
+def test_prometheus_recorder_renders_active_step_duration(tmp_path: Path) -> None:
+    state = tmp_path / "prometheus-state.json"
+    recorder = PrometheusMetricsRecorder(state_path=state)
+
+    recorder.workflow_started("demo", 10.0)
+    recorder.step_started("demo", "slow")
+
+    text = render_prometheus(__import__("json").loads(state.read_text()))
+
+    assert (
+        'workflow_step_active_duration_seconds{workflow="demo",step_id="slow",'
+        'kind=""}'
+    ) in text
