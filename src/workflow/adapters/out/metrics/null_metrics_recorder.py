@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 
 class NullMetricsRecorder:
     def workflow_started(self, workflow: str, started_unix: float) -> None:
@@ -13,3 +15,21 @@ class NullMetricsRecorder:
 
     def workflow_finished(self, report: object) -> None:
         _ = report
+
+    def gauge(
+        self,
+        name: str,
+        value: int | float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        _ = name, value, labels
+
+    def counter(
+        self,
+        name: str,
+        value: int | float = 1,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        _ = name, value, labels

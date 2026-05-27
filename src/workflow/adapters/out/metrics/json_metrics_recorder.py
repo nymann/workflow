@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Literal
@@ -13,8 +14,10 @@ class MetricEvent:
         "step-started",
         "step-finished",
         "workflow-finished",
+        "gauge",
+        "counter",
     ]
-    workflow: str
+    workflow: str | None
     payload: object
 
 
@@ -55,6 +58,44 @@ class JsonMetricsRecorder:
         )
         if self._path.suffix == ".json":
             self._write_json_report(report)
+
+    def gauge(
+        self,
+        name: str,
+        value: int | float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        self._append(
+            MetricEvent(
+                kind="gauge",
+                workflow=None,
+                payload={
+                    "name": name,
+                    "value": value,
+                    "labels": dict(labels or {}),
+                },
+            )
+        )
+
+    def counter(
+        self,
+        name: str,
+        value: int | float = 1,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        self._append(
+            MetricEvent(
+                kind="counter",
+                workflow=None,
+                payload={
+                    "name": name,
+                    "value": value,
+                    "labels": dict(labels or {}),
+                },
+            )
+        )
 
     def _append(self, event: MetricEvent) -> None:
         if self._path.parent:

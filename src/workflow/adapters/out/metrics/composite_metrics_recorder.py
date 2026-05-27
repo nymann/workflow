@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from collections.abc import Mapping
 
 
 class CompositeMetricsRecorder:
@@ -22,3 +23,23 @@ class CompositeMetricsRecorder:
     def workflow_finished(self, report: object) -> None:
         for recorder in self._recorders:
             recorder.workflow_finished(report)
+
+    def gauge(
+        self,
+        name: str,
+        value: int | float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        for recorder in self._recorders:
+            recorder.gauge(name, value, labels=labels)
+
+    def counter(
+        self,
+        name: str,
+        value: int | float = 1,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        for recorder in self._recorders:
+            recorder.counter(name, value, labels=labels)

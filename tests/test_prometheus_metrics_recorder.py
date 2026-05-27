@@ -74,3 +74,33 @@ def test_prometheus_recorder_accumulates_across_instances(tmp_path: Path) -> Non
     text = render_prometheus(__import__("json").loads(state.read_text()))
 
     assert 'workflow_runs_total{workflow="demo",ok="true"} 2' in text
+
+
+def test_prometheus_recorder_renders_custom_metrics(tmp_path: Path) -> None:
+    state = tmp_path / "prometheus-state.json"
+    recorder = PrometheusMetricsRecorder(state_path=state)
+
+    recorder.gauge(
+        "mutation_coverage_ratio",
+        0.75,
+        labels={"target_class": "com.acme.LegacyThing"},
+    )
+    recorder.counter(
+        "attempts",
+        labels={"target_class": "com.acme.LegacyThing", "result": "kept"},
+    )
+    recorder.counter(
+        "attempts",
+        labels={"target_class": "com.acme.LegacyThing", "result": "kept"},
+    )
+
+    text = render_prometheus(__import__("json").loads(state.read_text()))
+
+    assert (
+        'workflow_custom_gauge{name="mutation_coverage_ratio",'
+        'target_class="com.acme.LegacyThing"} 0.75'
+    ) in text
+    assert (
+        'workflow_custom_counter_total{name="attempts",'
+        'result="kept",target_class="com.acme.LegacyThing"} 2.0'
+    ) in text

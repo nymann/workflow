@@ -5,6 +5,7 @@ import math
 import os
 import tempfile
 import threading
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -109,6 +110,40 @@ class PrometheusMetricsRecorder:
             item["duration_seconds_count"] = (
                 _int(item.get("duration_seconds_count")) + 1
             )
+            item["last_observed_unix"] = time()
+
+        self._update_state(update)
+
+    def gauge(
+        self,
+        name: str,
+        value: int | float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        labels = dict(labels or {})
+
+        def update(state: dict[str, Any]) -> None:
+            item = _custom_metric_state(state, "gauges", name, labels)
+            item["value"] = value
+            item["labels"] = labels
+            item["last_observed_unix"] = time()
+
+        self._update_state(update)
+
+    def counter(
+        self,
+        name: str,
+        value: int | float = 1,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        labels = dict(labels or {})
+
+        def update(state: dict[str, Any]) -> None:
+            item = _custom_metric_state(state, "counters", name, labels)
+            item["value"] = float(item.get("value", 0.0)) + value
+            item["labels"] = labels
             item["last_observed_unix"] = time()
 
         self._update_state(update)
@@ -307,6 +342,33 @@ def render_prometheus(state: dict[str, Any]) -> str:
                 _int(item.get("duration_seconds_count")),
             )
         )
+    custom = state.get("custom", {})
+    gauges = custom.get("gauges", {})
+    if gauges:
+        lines.extend(
+            [
+                "# HELP workflow_custom_gauge Custom gauge metrics.",
+                "# TYPE workflow_custom_gauge gauge",
+            ]
+        )
+        for key, item in sorted(gauges.items()):
+            name, _ = key.split("\0", 1)
+            labels = {"name": name, **_labels(item)}
+            lines.append(_sample("workflow_custom_gauge", labels, _number(item.get("value"))))
+    counters = custom.get("counters", {})
+    if counters:
+        lines.extend(
+            [
+                "# HELP workflow_custom_counter_total Custom counter metrics.",
+                "# TYPE workflow_custom_counter_total counter",
+            ]
+        )
+        for key, item in sorted(counters.items()):
+            name, _ = key.split("\0", 1)
+            labels = {"name": name, **_labels(item)}
+            lines.append(
+                _sample("workflow_custom_counter_total", labels, _number(item.get("value")))
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -316,6 +378,27 @@ def _workflow_state(state: dict[str, Any], workflow: str) -> dict[str, Any]:
 
 def _step_state(state: dict[str, Any], workflow: str, step_id: str) -> dict[str, Any]:
     return state.setdefault("steps", {}).setdefault(f"{workflow}\0{step_id}", {})
+
+
+def _custom_metric_state(
+    state: dict[str, Any],
+    kind: str,
+    name: str,
+    labels: Mapping[str, str],
+) -> dict[str, Any]:
+    key = f"{name}\0{_label_key(labels)}"
+    return state.setdefault("custom", {}).setdefault(kind, {}).setdefault(key, {})
+
+
+def _label_key(labels: Mapping[str, str]) -> str:
+    return ",".join(f"{key}={value}" for key, value in sorted(labels.items()))
+
+
+def _labels(item: dict[str, Any]) -> dict[str, str]:
+    labels = item.get("labels", {})
+    if not isinstance(labels, dict):
+        return {}
+    return {str(key): str(value) for key, value in labels.items()}
 
 
 def _step_labels(
@@ -360,6 +443,10 @@ def _to_mapping(value: object) -> dict[str, Any]:
 
 def _int(value: Any) -> int:
     return value if isinstance(value, int) else 0
+
+
+def _number(value: Any) -> int | float:
+    return value if isinstance(value, int | float) else 0
 
 
 def _read_state(path: Path) -> dict[str, Any]:
