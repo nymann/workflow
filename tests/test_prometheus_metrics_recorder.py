@@ -96,11 +96,7 @@ def test_prometheus_recorder_renders_custom_metrics(tmp_path: Path) -> None:
 
     text = render_prometheus(__import__("json").loads(state.read_text()))
 
+    assert 'mutation_coverage_ratio{target_class="com.acme.LegacyThing"} 0.75' in text
     assert (
-        'workflow_custom_gauge{name="mutation_coverage_ratio",'
-        'target_class="com.acme.LegacyThing"} 0.75'
-    ) in text
-    assert (
-        'workflow_custom_counter_total{name="attempts",'
-        'result="kept",target_class="com.acme.LegacyThing"} 2.0'
+        'attempts_total{result="kept",target_class="com.acme.LegacyThing"} 2.0'
     ) in text

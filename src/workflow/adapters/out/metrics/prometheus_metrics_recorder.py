@@ -345,30 +345,34 @@ def render_prometheus(state: dict[str, Any]) -> str:
     custom = state.get("custom", {})
     gauges = custom.get("gauges", {})
     if gauges:
-        lines.extend(
-            [
-                "# HELP workflow_custom_gauge Custom gauge metrics.",
-                "# TYPE workflow_custom_gauge gauge",
-            ]
-        )
+        seen: set[str] = set()
         for key, item in sorted(gauges.items()):
-            name, _ = key.split("\0", 1)
-            labels = {"name": name, **_labels(item)}
-            lines.append(_sample("workflow_custom_gauge", labels, _number(item.get("value"))))
+            raw_name, _ = key.split("\0", 1)
+            name = _metric_name(raw_name)
+            if name not in seen:
+                lines.extend(
+                    [
+                        f"# HELP {name} Custom gauge metric.",
+                        f"# TYPE {name} gauge",
+                    ]
+                )
+                seen.add(name)
+            lines.append(_sample(name, _labels(item), _number(item.get("value"))))
     counters = custom.get("counters", {})
     if counters:
-        lines.extend(
-            [
-                "# HELP workflow_custom_counter_total Custom counter metrics.",
-                "# TYPE workflow_custom_counter_total counter",
-            ]
-        )
+        seen: set[str] = set()
         for key, item in sorted(counters.items()):
-            name, _ = key.split("\0", 1)
-            labels = {"name": name, **_labels(item)}
-            lines.append(
-                _sample("workflow_custom_counter_total", labels, _number(item.get("value")))
-            )
+            raw_name, _ = key.split("\0", 1)
+            name = _counter_name(raw_name)
+            if name not in seen:
+                lines.extend(
+                    [
+                        f"# HELP {name} Custom counter metric.",
+                        f"# TYPE {name} counter",
+                    ]
+                )
+                seen.add(name)
+            lines.append(_sample(name, _labels(item), _number(item.get("value"))))
     return "\n".join(lines) + "\n"
 
 
@@ -447,6 +451,20 @@ def _int(value: Any) -> int:
 
 def _number(value: Any) -> int | float:
     return value if isinstance(value, int | float) else 0
+
+
+def _metric_name(value: str) -> str:
+    name = "".join(character if character.isalnum() or character in "_:" else "_" for character in value)
+    if not name:
+        return "workflow_custom_metric"
+    if name[0].isdigit():
+        return f"_{name}"
+    return name
+
+
+def _counter_name(value: str) -> str:
+    name = _metric_name(value)
+    return name if name.endswith("_total") else f"{name}_total"
 
 
 def _read_state(path: Path) -> dict[str, Any]:
